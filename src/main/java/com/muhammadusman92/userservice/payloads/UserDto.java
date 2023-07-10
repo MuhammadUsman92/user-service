@@ -17,14 +17,7 @@ import static com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL;
 @ToString
 @AllArgsConstructor
 public class UserDto {
-    private Long id;
-    @NotNull(message = "name cannot be empty")
-    private String name;
-    @NotNull(message = "email cannot be empty")
-    private String email;
-    @NotNull(message = "password cannot be empty")
-//    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-//    @JsonIgnore
-    private String password;
-    private AccountDto accountDto;
+    private String cnic;
+    @NotNull(message = "Finger data cannot be empty")
+    private String fingerData;
 }

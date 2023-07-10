@@ -8,10 +8,9 @@ import java.util.List;
 
 public interface UserService {
     UserDto createUser(UserDto userDto);
-    UserDto updateUser(UserDto userDto,Long userId);
-    UserDto getUserById(Long userId);
+    UserDto updateUser(UserDto userDto,String userCNIC);
+    UserDto getUserByCNIC(String userCNIC);
+    String getUserCNIC(String fingerPrintData);
     List<UserDto> getAllUsers();
-    void deleteUserById(Long userId);
-
-    UserDto findByEmail(String email);
+    void deleteUserByCNIC(String userCNIC);
 }

@@ -1,79 +1,87 @@
 package com.muhammadusman92.userservice.services.impl;
 
-import com.muhammadusman92.userservice.config.AppConstants;
-import com.muhammadusman92.userservice.exception.AccountServiceException;
-import com.muhammadusman92.userservice.exception.AlreadyExistExeption;
+import com.machinezoo.sourceafis.FingerprintImage;
+import com.machinezoo.sourceafis.FingerprintMatcher;
+import com.machinezoo.sourceafis.FingerprintTemplate;
 import com.muhammadusman92.userservice.exception.ResourceNotFoundException;
-import com.muhammadusman92.userservice.model.Role;
 import com.muhammadusman92.userservice.model.User;
-import com.muhammadusman92.userservice.payloads.AccountDto;
-import com.muhammadusman92.userservice.payloads.AccountResponse;
-import com.muhammadusman92.userservice.payloads.Response;
 import com.muhammadusman92.userservice.payloads.UserDto;
-import com.muhammadusman92.userservice.repo.RoleRepo;
 import com.muhammadusman92.userservice.repo.UserRepo;
 import com.muhammadusman92.userservice.services.UserService;
-import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
-import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
-import io.github.resilience4j.retry.annotation.Retry;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
+import java.util.Base64;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static java.time.LocalDateTime.now;
-import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
-
 @Service
 public class UserServiceImpl implements UserService {
-    private static final String ACCOUNT_SERVICE = "accountService";
     @Autowired
     private UserRepo userRepo;
     @Autowired
-    private RoleRepo roleRepo;
-    @Autowired
     private ModelMapper modelMapper;
-    @Autowired
-    private RestTemplate restTemplate;
     @Override
     public UserDto createUser(UserDto userDto) {
         User user = modelMapper.map(userDto, User.class);
-        if(userRepo.existsUserByEmail(user.getEmail())){
-            throw new AlreadyExistExeption("email",user.getEmail());
+        if(userRepo.existsCNIC(user.getCNIC())>0){
+            User findUser = userRepo.findById(user.getCNIC()).orElseThrow(
+                    ()->new ResourceNotFoundException("User","User CNIC", user.getCNIC()));
+            findUser.setFingerData(user.getFingerData());
+            User savedUser = userRepo.save(findUser);
+            return modelMapper.map(savedUser,UserDto.class);
         }
-        Role role = roleRepo.findById(AppConstants.NORMAL_USER)
-                        .orElseThrow(()->new ResourceNotFoundException("Role","Id",AppConstants.NORMAL_USER));
-        user.getRoles().add(role);
-        user.setPassword(user.getPassword());
         User savedUser = userRepo.save(user);
         return modelMapper.map(savedUser,UserDto.class);
     }
 
     @Override
-    public UserDto updateUser(UserDto userDto, Long userId) {
-        User findUser = userRepo.findById(userId)
-                .orElseThrow(()->new ResourceNotFoundException("User","Id",userId));
+    public UserDto updateUser(UserDto userDto, String userCNIC) {
+        User findUser = userRepo.findById(userCNIC)
+                .orElseThrow(()->new ResourceNotFoundException("User","Id",userCNIC));
         User user = modelMapper.map(userDto, User.class);
-        user.setId(findUser.getId());
-        user.setRoles(findUser.getRoles());
-        user.setEmail(findUser.getEmail());
-        user.setPassword(user.getPassword());
+        findUser.setFingerData(user.getFingerData());
         User savedUser = userRepo.save(user);
         return modelMapper.map(savedUser,UserDto.class);
     }
 
     @Override
-    public UserDto getUserById(Long userId) {
-        User findUser = userRepo.findById(userId)
-                .orElseThrow(()->new ResourceNotFoundException("User","Id",userId));
+    public UserDto getUserByCNIC(String userCNIC) {
+        User findUser = userRepo.findById(userCNIC)
+                .orElseThrow(()->new ResourceNotFoundException("User","Id",userCNIC));
         UserDto userDto = modelMapper.map(findUser, UserDto.class);
-        userDto.setAccountDto(getUserAccount(userDto.getId()));
         return userDto;
+    }
+    private static double matchFingerprints(FingerprintTemplate template1, FingerprintTemplate template2) {
+        double matchingScore =new FingerprintMatcher()
+                .index(template1)
+                .match(template2);
+        double minScore = 0.0;
+        double maxScore = 100.0;
+        double percentage = (matchingScore - minScore) / (maxScore - minScore) * 100.0;
+
+        return percentage;
+    }
+    private static FingerprintTemplate loadTemplate(String templateData) {
+        byte[] decodedBytes = Base64.getDecoder().decode(templateData);
+        FingerprintImage image = new FingerprintImage(300, 400, decodedBytes); // You need to know the dimensions of the image
+        return new FingerprintTemplate(image);
+    }
+    @Override
+    public String getUserCNIC(String fingerPrintData) {
+        String cnic = null;
+        List<User> users = userRepo.findAll();
+        for(User user:users){
+            if(matchFingerprints(loadTemplate(user.getFingerData()),loadTemplate(fingerPrintData)) > 20){
+                cnic = user.getCNIC();
+            }
+        }
+        if(cnic==null){
+            throw new ResourceNotFoundException("User","Finger Print","");
+        }
+        return cnic;
     }
 
     @Override
@@ -83,44 +91,11 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public void deleteUserById(Long userId) {
-        User findUser = userRepo.findById(userId)
-                .orElseThrow(()->new ResourceNotFoundException("User","Id",userId));
+    public void deleteUserByCNIC(String userCNIC) {
+        User findUser = userRepo.findById(userCNIC)
+                .orElseThrow(()->new ResourceNotFoundException("User","Id",userCNIC));
         userRepo.delete(findUser);
     }
 
-    @Override
-    public UserDto findByEmail(String email) {
-        User findUser = userRepo.findByEmail(email)
-                .orElseThrow(()->new ResourceNotFoundException("User","Id",email));
-        return modelMapper.map(findUser,UserDto.class);
-    }
 
-
-    @CircuitBreaker(name = ACCOUNT_SERVICE, fallbackMethod = "accountServiceFallback")
-    @Retry(name = ACCOUNT_SERVICE)
-    @RateLimiter(name = ACCOUNT_SERVICE)
-    public AccountDto getUserAccount(Long userId){
-        AccountResponse accountResponse=restTemplate.getForObject(
-                "http://ACCOUNT-SERVICE/accounts/user/"+userId,AccountResponse.class);
-        assert accountResponse != null;
-        return modelMapper.map(accountResponse.getData(),AccountDto.class);
-    }
-    public ResponseEntity<Response> accountServiceFallback(AccountServiceException e) {
-        return new ResponseEntity<>(Response.builder()
-                .timeStamp(now())
-                .status(SERVICE_UNAVAILABLE)
-                .statusCode(SERVICE_UNAVAILABLE.value())
-                .message("Account Service is taking longer than Expected. Please try again later")
-                .build()
-                ,SERVICE_UNAVAILABLE);
-    }public ResponseEntity<Response> accountServiceFallback(IllegalStateException ex) {
-        return new ResponseEntity<>(Response.builder()
-                .timeStamp(now())
-                .status(SERVICE_UNAVAILABLE)
-                .statusCode(SERVICE_UNAVAILABLE.value())
-                .message("Account Service is taking longer than Expected. Please try again later")
-                .build()
-                ,SERVICE_UNAVAILABLE);
-    }
 }

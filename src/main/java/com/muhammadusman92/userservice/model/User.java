@@ -22,35 +22,9 @@ import java.util.stream.Collectors;
 @Where(clause = "deleted=false")
 public class User {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    @Column(length = 100,nullable = false)
-    private String name;
-    @Column(unique = true)
-    private String email;
-    @Column(nullable = false)
-    private String password;
+    @Column(name = "CNIC",unique = true,nullable = false,length = 50)
+    private String CNIC;
+    @Column(length = 120000)
+    private String fingerData;
     private boolean deleted = Boolean.FALSE;
-    @ManyToMany(cascade = CascadeType.ALL,fetch = FetchType.EAGER)
-    @JoinTable(name = "user_role",joinColumns = @JoinColumn(name = "user",referencedColumnName = "id")
-            ,inverseJoinColumns = @JoinColumn(name = "role",referencedColumnName = "id"))
-    private Set<Role> roles = new HashSet<>();
-    private boolean accountNonExpired;
-    private boolean accountNonLocked;
-    private boolean credentialsNonExpired;
-    private boolean enabled;
-
-    public User() {
-        this.accountNonExpired = true;
-        this.accountNonLocked = true;
-        this.credentialsNonExpired = true;
-        this.enabled = true;
-    }
-
-    public User(Long id, String name, String email, String password) {
-        this.id = id;
-        this.name = name;
-        this.email = email;
-        this.password = password;
-    }
 }

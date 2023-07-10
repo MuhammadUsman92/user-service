@@ -1,7 +1,6 @@
 package com.muhammadusman92.userservice.exception;
 
 import com.muhammadusman92.userservice.payloads.Response;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
